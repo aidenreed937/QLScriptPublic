@@ -15,6 +15,8 @@ AnyRouter 签到脚本（适用于青龙面板）
 - ANYROUTER_VERIFY    可选，是否校验证书，默认：true（可设为 false）
 - ANYROUTER_HEADERS   可选，追加请求头，支持 JSON 或 k=v;k=v / 换行分隔
 - ANYROUTER_PREGET    可选，是否先 GET 用户页预热会话，默认：false
+- ANYROUTER_NEW_API_USER 可选，控制是否发送 new-api-user 请求头；未设置默认发送值 "1"；
+                      设为 0/false/off/空 为禁用；其他非空值将作为该头的值。
 \n新增调试/判定开关：
 - ANYROUTER_LOG_BYTES   可选，失败时/调试用的响应预览最大字符数，默认：500
 - ANYROUTER_STRICT_JSON 可选，为 true 时仅在 JSON 且 success==true 判定成功
@@ -275,6 +277,18 @@ def main() -> int:
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/121.0.0.0 Safari/537.36",
     )
+    # 兼容可配置的新用户标识头
+    _new_api_user_env = os.getenv("ANYROUTER_NEW_API_USER")
+    _new_api_user_val: Optional[str]
+    if _new_api_user_env is None:
+        _new_api_user_val = "1"  # 默认开启并发送值 "1"
+    else:
+        _v = str(_new_api_user_env).strip()
+        if _v.lower() in {"", "0", "false", "no", "off"}:
+            _new_api_user_val = None  # 显式关闭
+        else:
+            _new_api_user_val = _v  # 使用自定义非空值
+
     headers = {
         "Cookie": cookie,
         # 使用可覆盖的浏览器 UA，降低风控概率
@@ -282,6 +296,9 @@ def main() -> int:
         "Referer": referer,
         "Accept": "application/json, text/plain, */*",
     }
+    # 标识为新 API 用户，服务端可能依赖该头进行路由/白名单判定
+    if _new_api_user_val is not None:
+        headers["new-api-user"] = _new_api_user_val
     # 追加自定义请求头（可用于对齐浏览器请求）
     extra_headers = parse_headers(os.getenv("ANYROUTER_HEADERS"))
     if extra_headers:
