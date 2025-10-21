@@ -109,6 +109,14 @@ def parse_headers(val: Optional[str]) -> Dict[str, str]:
     return headers
 
 
+def mask_secret(s: str, head: int = 6, tail: int = 6) -> str:
+    """通用脱敏：保留首尾少量字符。"""
+    s = (s or "").strip()
+    if len(s) <= head + tail:
+        return "*" * len(s)
+    return f"{s[:head]}***{s[-tail:]}"
+
+
 def notify(title: str, content: str) -> None:
     token = os.getenv("PUSHPLUS_TOKEN")
     bark = os.getenv("BARK_URL")
@@ -261,14 +269,16 @@ def main() -> int:
     strict_json = parse_bool(os.getenv("ANYROUTER_STRICT_JSON"), False)
     preget = parse_bool(os.getenv("ANYROUTER_PREGET"), False)
 
+    ua = os.getenv(
+        "ANYROUTER_UA",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/121.0.0.0 Safari/537.36",
+    )
     headers = {
         "Cookie": cookie,
-        # 使用常见浏览器 UA，降低风控概率
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/121.0.0.0 Safari/537.36"
-        ),
+        # 使用可覆盖的浏览器 UA，降低风控概率
+        "User-Agent": ua,
         "Referer": referer,
         "Accept": "application/json, text/plain, */*",
     }
@@ -276,6 +286,31 @@ def main() -> int:
     extra_headers = parse_headers(os.getenv("ANYROUTER_HEADERS"))
     if extra_headers:
         headers.update(extra_headers)
+
+    # 打印环境参数（脱敏，不影响后续流程）
+    try:
+        log("=== 运行环境参数 ===")
+        log(f"Base: {base}")
+        log(f"签到接口: {url}")
+        log(f"Referer: {referer}")
+        log(f"User-Agent: {ua}")
+        log(f"Cookie(脱敏): {mask_secret(cookie)}")
+        log(f"Timeout: {timeout}s, Retry: {retry}, Verify: {verify}")
+        log(f"Strict JSON: {strict_json}, Log Bytes: {log_bytes}, Preget: {preget}")
+        # 系统代理
+        hp = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+        hps = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+        if hp or hps:
+            log(f"系统代理: http={hp or ''}, https={hps or ''}")
+        else:
+            log("系统代理: 未检测到 HTTP_PROXY/HTTPS_PROXY")
+        # 追加头键名（不打印值，避免泄露）
+        if extra_headers:
+            log(f"追加请求头键: {', '.join(extra_headers.keys())}")
+        log(f"HTTP后端: {'requests' if _HAS_REQUESTS else 'urllib'}")
+        log("=== 参数打印完成，开始请求 ===")
+    except Exception:
+        pass
 
     # 可选预检：访问用户页，便于种植风控 Cookie 或初始化会话
     if preget:
