@@ -298,7 +298,7 @@ def main() -> int:
     }
     # 标识为新 API 用户，服务端可能依赖该头进行路由/白名单判定
     if _new_api_user_val is not None:
-        headers["new-api-user"] = _new_api_user_val
+        headers["New-Api-User"] = _new_api_user_val
     # 追加自定义请求头（可用于对齐浏览器请求）
     extra_headers = parse_headers(os.getenv("ANYROUTER_HEADERS"))
     if extra_headers:
