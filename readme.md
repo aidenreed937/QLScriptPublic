@@ -4,7 +4,7 @@
 
 **拉去命令**
 
-ql repo https://github.com/aidenreed937/QLScriptPublic  backup  main
+ql repo https://github.com/aidenreed937/QLScriptPublic.git  backup  main
 
 **文件结构**
 - `scripts/checkin_template.py`: 通用签到脚本（Python 3）。

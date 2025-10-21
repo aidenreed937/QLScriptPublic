@@ -13,6 +13,11 @@ AnyRouter 签到脚本（适用于青龙面板）
 - ANYROUTER_TIMEOUT   可选，请求超时秒数，默认：15
 - ANYROUTER_RETRY     可选，失败重试次数，默认：1（总尝试=1+重试）
 - ANYROUTER_VERIFY    可选，是否校验证书，默认：true（可设为 false）
+- ANYROUTER_HEADERS   可选，追加请求头，支持 JSON 或 k=v;k=v / 换行分隔
+- ANYROUTER_PREGET    可选，是否先 GET 用户页预热会话，默认：false
+\n新增调试/判定开关：
+- ANYROUTER_LOG_BYTES   可选，失败时/调试用的响应预览最大字符数，默认：500
+- ANYROUTER_STRICT_JSON 可选，为 true 时仅在 JSON 且 success==true 判定成功
 
 通知（可选其一或都不配）：
 - PUSHPLUS_TOKEN      PushPlus 的 token
@@ -73,6 +78,35 @@ def preview_response(text: str, limit: int) -> str:
     if len(pretty) > limit:
         return pretty[:limit] + f"\n...[已截断，总长度={len(pretty)}，预览上限={limit}]"
     return pretty
+
+
+def parse_headers(val: Optional[str]) -> Dict[str, str]:
+    """解析追加请求头：支持 JSON 或 k=v/每行一对。"""
+    if not val:
+        return {}
+    s = val.strip()
+    # JSON 优先
+    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+        try:
+            data = json.loads(s)
+            if isinstance(data, dict):
+                return {str(k): str(v) for k, v in data.items()}
+        except Exception:
+            pass
+    # 其次 k=v 或 k: v，允许以分号或换行分割
+    headers: Dict[str, str] = {}
+    for pair in re.split(r"[;\n]+", s):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+        elif ":" in pair:
+            k, v = pair.split(":", 1)
+        else:
+            continue
+        headers[k.strip()] = v.strip()
+    return headers
 
 
 def notify(title: str, content: str) -> None:
@@ -147,6 +181,29 @@ def request_post(url: str, headers: Dict[str, str], timeout: int, verify: bool) 
             raise RuntimeError(f"请求失败: {e}")
 
 
+def request_get(url: str, headers: Dict[str, str], timeout: int, verify: bool) -> Tuple[int, str]:
+    if _HAS_REQUESTS:
+        try:
+            resp = requests.get(url, headers=headers, timeout=timeout, verify=verify)
+            return resp.status_code, resp.text
+        except Exception as e:
+            raise RuntimeError(f"请求失败: {e}")
+    else:
+        try:
+            req = urllib.request.Request(url=url, method="GET")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                status = getattr(resp, "status", 200)
+                text = resp.read().decode("utf-8", errors="ignore")
+                return status, text
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else str(e)
+            return e.code, text
+        except Exception as e:
+            raise RuntimeError(f"请求失败: {e}")
+
+
 def detect_success(status: int, text: str, strict_json: bool = False) -> Tuple[bool, str]:
     if strict_json:
         try:
@@ -202,6 +259,7 @@ def main() -> int:
     verify = parse_bool(os.getenv("ANYROUTER_VERIFY"), True)
     log_bytes = get_env_int("ANYROUTER_LOG_BYTES", 500)
     strict_json = parse_bool(os.getenv("ANYROUTER_STRICT_JSON"), False)
+    preget = parse_bool(os.getenv("ANYROUTER_PREGET"), False)
 
     headers = {
         "Cookie": cookie,
@@ -214,6 +272,23 @@ def main() -> int:
         "Referer": referer,
         "Accept": "application/json, text/plain, */*",
     }
+    # 追加自定义请求头（可用于对齐浏览器请求）
+    extra_headers = parse_headers(os.getenv("ANYROUTER_HEADERS"))
+    if extra_headers:
+        headers.update(extra_headers)
+
+    # 可选预检：访问用户页，便于种植风控 Cookie 或初始化会话
+    if preget:
+        try:
+            log(f"预检 GET: {referer}")
+            s, t = request_get(referer, {k: v for k, v in headers.items() if k.lower() != "cookie"}, timeout, verify)
+            log(f"预检响应状态: {s}")
+            if log_bytes > 0:
+                prev = preview_response(t or "", log_bytes)
+                if prev:
+                    log("预检内容预览:\n" + prev)
+        except Exception as e:
+            log(f"预检失败（忽略继续）: {e}")
 
     attempts = 0
     last_status = 0
@@ -226,6 +301,11 @@ def main() -> int:
             last_status, last_text = status, text
             ok, reason = detect_success(status, text, strict_json)
             log(f"响应状态: {status}, 判定: {'成功' if ok else '失败'}，原因: {reason}")
+            if not ok and log_bytes > 0:
+                # 控制台输出响应预览，便于排障（不依赖通知）
+                preview = preview_response(text or "", log_bytes)
+                if preview:
+                    log("响应内容预览:\n" + preview)
             if ok:
                 notify("AnyRouter 签到：成功", f"状态: {status}<br/>说明: {reason}")
                 return 0
@@ -242,6 +322,9 @@ def main() -> int:
         "AnyRouter 签到：失败",
         f"最后状态: {last_status}<br/>响应预览:<br/><pre>{(preview or '')}</pre>",
     )
+    # 同步在控制台输出预览，避免未配置通知时无法排查
+    if preview:
+        log("最终响应内容预览:\n" + preview)
     return 1
 
 
