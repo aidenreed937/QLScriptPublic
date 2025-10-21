@@ -2,6 +2,10 @@
 - 本仓库提供一个通用“签到脚本”模板，便于在青龙面板中通过环境变量快速对接任意签到接口。
 - 参考思路来自 smallfawn/QLScriptPublic，但本脚本为通用模板，不绑定具体站点。
 
+**拉去命令**
+
+ql repo https://github.com/aidenreed937/QLScriptPublic  backup  main
+
 **文件结构**
 - `scripts/checkin_template.py`: 通用签到脚本（Python 3）。
 
