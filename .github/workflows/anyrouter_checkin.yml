@@ -18,49 +18,81 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create runtime config from secrets
+      - name: Prepare multi-account configs (from secrets)
         env:
           AR_USER: ${{ secrets.ANYROUTER_USER }}
           AR_PASS: ${{ secrets.ANYROUTER_PASS }}
-        shell: bash
+          ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         run: |
-          mkdir -p scripts
-          # 注意：不使用带引号的 heredoc，让环境变量在此处展开
-          cat > scripts/anyrouter_browser_checkin.config.json << EOF
-          {
-            "user": "${AR_USER}",
-            "pass": "${AR_PASS}",
-            "base": "https://anyrouter.top",
-            "login_url": "/login",
-            "sign_path": "/api/user/sign_in",
-            "timeout": 30,
-            "verify": true,
-            "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "headers": "",
-            "new_api_user": "1",
-            "headed": false,
-            "slowmo": 0,
-            "viewport": "1280x900",
-            "user_selector": "",
-            "pass_selector": "",
-            "submit_selector": "",
-            "log_bytes": 2000,
-            "log_success_bytes": 1500
-          }
-          EOF
+          python - << 'PY'
+          import json, os, pathlib
+          accounts_json = (os.environ.get('ACCOUNTS') or '').strip()
+          accounts = []
+          if accounts_json:
+              try:
+                  data = json.loads(accounts_json)
+                  if isinstance(data, list):
+                      accounts = [
+                          {"user": str(it.get("user","")), "pass": str(it.get("pass",""))}
+                          for it in data if isinstance(it, dict)
+                      ]
+              except Exception as e:
+                  print(f"[prepare] ANYROUTER_ACCOUNTS 解析失败: {e}")
+          if not accounts:
+              u = os.environ.get('AR_USER','')
+              p = os.environ.get('AR_PASS','')
+              if u and p:
+                  accounts = [{"user": u, "pass": p}]
+          if not accounts:
+              raise SystemExit('[prepare] 未检测到账号，需配置 ANYROUTER_ACCOUNTS 或 ANYROUTER_USER/ANYROUTER_PASS')
+          pathlib.Path('scripts').mkdir(parents=True, exist_ok=True)
+          for idx, acc in enumerate(accounts, 1):
+              cfg = {
+                  "user": acc["user"],
+                  "pass": acc["pass"],
+                  "base": "https://anyrouter.top",
+                  "login_url": "/login",
+                  "sign_path": "/api/user/sign_in",
+                  "timeout": 30,
+                  "verify": True,
+                  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                  "headers": "",
+                  "new_api_user": "1",
+                  "headed": False,
+                  "slowmo": 0,
+                  "viewport": "1280x900",
+                  "user_selector": "",
+                  "pass_selector": "",
+                  "submit_selector": "",
+                  "log_bytes": 2000,
+                  "log_success_bytes": 1500,
+              }
+              path = f'scripts/anyrouter_browser_checkin_{idx}.config.json'
+              with open(path, 'w', encoding='utf-8') as f:
+                  json.dump(cfg, f, ensure_ascii=False, indent=2)
+              print(f"[prepare] 生成配置: {path} (user={acc['user'][:3]}***)")
+          PY
 
       - name: Install Python deps (Playwright binding)
         run: |
           python -m pip install -U pip
           pip install "playwright==1.55.0"
 
-      - name: Run headless checkin
+      - name: Run headless checkin (multi-account)
         env:
           PYTHONIOENCODING: utf-8
           DEBUG: pw:api
         run: |
-          python scripts/anyrouter_browser_checkin.py \
-            --config scripts/anyrouter_browser_checkin.config.json 2>&1 | tee checkin.log
+          set -e
+          fail=0
+          shopt -s nullglob
+          for cfg in scripts/anyrouter_browser_checkin_*.config.json; do
+            idx=$(basename "$cfg" | sed -E 's/.*_([0-9]+)\.config\.json/\1/')
+            echo "::group::Run account #$idx ($cfg)"
+            python scripts/anyrouter_browser_checkin.py --config "$cfg" 2>&1 | tee "checkin_${idx}.log" || fail=1
+            echo "::endgroup::"
+          done
+          exit ${fail}
 
       - name: Upload error snapshots on failure
         if: failure()
@@ -69,5 +101,5 @@ jobs:
           name: headless-snapshots
           path: |
             anyrouter_headless_error_*.png
-            checkin.log
+            checkin_*.log
           if-no-files-found: ignore
