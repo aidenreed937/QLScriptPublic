@@ -48,6 +48,11 @@ jobs:
           }
           EOF
 
+      - name: Install Python deps (Playwright binding)
+        run: |
+          python -m pip install -U pip
+          pip install playwright
+
       - name: Run headless checkin
         env:
           PYTHONIOENCODING: utf-8
