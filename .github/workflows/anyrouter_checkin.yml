@@ -1,0 +1,75 @@
+name: AnyRouter Browser Checkin
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # GitHub Actions 使用 UTC；上海(Asia/Shanghai) = UTC+8
+    # 每天上海时间 10:00 对应 UTC 02:00
+    - cron: "0 2 * * *"
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright (Python)
+        run: |
+          python -m pip install -U pip
+          pip install playwright
+
+      - name: Install Playwright Browsers & Deps
+        uses: microsoft/playwright-github-action@v1
+
+      - name: Create runtime config from secrets
+        env:
+          AR_USER: ${{ secrets.ANYROUTER_USER }}
+          AR_PASS: ${{ secrets.ANYROUTER_PASS }}
+        shell: bash
+        run: |
+          mkdir -p scripts
+          cat > scripts/anyrouter_browser_checkin.config.json << 'EOF'
+          {
+            "user": "${AR_USER}",
+            "pass": "${AR_PASS}",
+            "base": "https://anyrouter.top",
+            "login_url": "/login",
+            "sign_path": "/api/user/sign_in",
+            "timeout": 30,
+            "verify": true,
+            "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "headers": "",
+            "new_api_user": "1",
+            "headed": false,
+            "slowmo": 0,
+            "viewport": "1280x900",
+            "user_selector": "",
+            "pass_selector": "",
+            "submit_selector": "",
+            "log_bytes": 2000,
+            "log_success_bytes": 1500
+          }
+          EOF
+
+      - name: Run headless checkin
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python scripts/anyrouter_browser_checkin.py \
+            --config scripts/anyrouter_browser_checkin.config.json
+
+      - name: Upload error snapshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-snapshots
+          path: anyrouter_headless_error_*.png
+          if-no-files-found: ignore

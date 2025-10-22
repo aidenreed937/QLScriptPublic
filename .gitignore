@@ -82,3 +82,5 @@ __pycache__/
 
 # Local secrets for AnyRouter test
 /scripts/test
+
+*.config.json
