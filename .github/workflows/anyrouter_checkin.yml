@@ -25,7 +25,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p scripts
-          cat > scripts/anyrouter_browser_checkin.config.json << 'EOF'
+          # 注意：不使用带引号的 heredoc，让环境变量在此处展开
+          cat > scripts/anyrouter_browser_checkin.config.json << EOF
           {
             "user": "${AR_USER}",
             "pass": "${AR_PASS}",
@@ -36,6 +37,7 @@ jobs:
             "verify": true,
             "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             "headers": "",
+            "new_api_user": "1",
             "headed": false,
             "slowmo": 0,
             "viewport": "1280x900",
