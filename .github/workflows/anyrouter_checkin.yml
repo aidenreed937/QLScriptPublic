@@ -85,9 +85,15 @@ jobs:
         run: |
           set -e
           fail=0
-          shopt -s nullglob
-          for cfg in scripts/anyrouter_browser_checkin_*.config.json; do
-            idx=$(basename "$cfg" | sed -E 's/.*_([0-9]+)\.config\.json/\1/')
+          set -- scripts/anyrouter_browser_checkin_*.config.json
+          # 如果没有生成任何账号配置，则直接跳过
+          if [ "$1" = "scripts/anyrouter_browser_checkin_*.config.json" ]; then
+            echo "No account config found, skip."
+            exit 0
+          fi
+          idx=0
+          for cfg in "$@"; do
+            idx=$((idx+1))
             echo "::group::Run account #$idx ($cfg)"
             python scripts/anyrouter_browser_checkin.py --config "$cfg" 2>&1 | tee "checkin_${idx}.log" || fail=1
             echo "::endgroup::"
