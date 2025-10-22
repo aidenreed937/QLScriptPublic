@@ -26,8 +26,10 @@ jobs:
           python -m pip install -U pip
           pip install playwright
 
-      - name: Install Playwright Browsers & Deps
-        uses: microsoft/playwright-github-action@v1
+      - name: Install Playwright browsers & system deps (CLI)
+        # 官方建议使用 CLI 安装浏览器与系统依赖，兼容 ubuntu 24.04 (noble)
+        run: |
+          python -m playwright install --with-deps chromium
 
       - name: Create runtime config from secrets
         env:
