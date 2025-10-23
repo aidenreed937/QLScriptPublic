@@ -2,7 +2,7 @@ name: AnyRouter Browser Checkin
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */8 * * *'
   workflow_dispatch:
 
 jobs:
