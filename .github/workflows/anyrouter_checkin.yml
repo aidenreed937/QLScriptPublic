@@ -1,11 +1,9 @@
 name: AnyRouter Browser Checkin
 
 on:
-  workflow_dispatch: {}
   schedule:
-    # GitHub Actions 使用 UTC；上海(Asia/Shanghai) = UTC+8
-    # 每天上海时间 10:00 对应 UTC 02:00
-    - cron: "*/5 * * * *"
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   checkin:
